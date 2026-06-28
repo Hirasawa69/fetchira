@@ -1,0 +1,9 @@
+/* fetchira webfonts
+   Loaded from Google Fonts. If you need fully-offline binaries, download these
+   families and swap the @import for local @font-face src rules.
+
+   Space Grotesk  — display, wordmark, UI headings (technical grotesk personality)
+   Hanken Grotesk — UI body, labels, table text (warm, legible neutral)
+   JetBrains Mono — numbers, URLs, log lines, data (developer-native monospace)
+*/
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');

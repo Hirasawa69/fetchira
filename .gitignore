@@ -1,0 +1,21 @@
+# secrets / local state — never commit
+research/
+.env
+fetchira.toml
+usage.db
+usage.db-shm
+usage.db-wal
+.fetchira-dev/
+
+# build
+/target
+
+# scratch
+scratchpad/
+
+# macOS / editors
+.DS_Store
+*.bak
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,122 @@
+<!-- @dsCard group="Dashboard" viewport="1320x880" name="fetchira dashboard" subtitle="Overview · Accounts · Activity — live quota router control panel" -->
+<!-- @startingPoint section="Dashboard" subtitle="Full fetchira router dashboard — 3 tabs, live log, add-account flow" viewport="1320x880" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fetchira — router dashboard</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  html, body { background: var(--bg-base); }
+  #root { min-height: 100vh; }
+</style>
+<!-- Vendored locally so the dashboard works fully offline (no CDN dependency). -->
+<script src="../../vendor/react.production.min.js"></script>
+<script src="../../vendor/react-dom.production.min.js"></script>
+<script src="../../vendor/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="data.js"></script>
+</head>
+<body class="fx-backplate">
+<div id="root"></div>
+
+<script type="text/babel" src="TopBar.jsx"></script>
+<script type="text/babel" src="OverviewTab.jsx"></script>
+<script type="text/babel" src="AccountsTab.jsx"></script>
+<script type="text/babel" src="ActivityTab.jsx"></script>
+<script type="text/babel" src="AddAccountModal.jsx"></script>
+
+<script type="text/babel">
+const { Tabs, Button, Card, Badge } = window.FetchiraDesignSystem_6526df;
+
+function EmptyState({ onAdd }) {
+  return (
+    <div style={{ maxWidth: 560, margin: '8vh auto 0', textAlign: 'center', padding: '0 20px' }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 600, color: 'var(--text-hi)', letterSpacing: '-0.02em', marginBottom: 8 }}>No providers yet</div>
+      <div style={{ fontFamily: 'var(--font-ui)', fontSize: 14, color: 'var(--text-mid)', marginBottom: 24, lineHeight: 1.55 }}>
+        fetchira routes search, read and deep-research calls across free-tier providers.
+        Add your first account to start filling the tank.
+      </div>
+      <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 28 }}>
+        {['serper','tavily','exa','jina','firecrawl','steel','perplexity_web','gemini_web','grok_web'].map((p) => (
+          <Badge key={p} tone="neutral" variant="outline">{p}</Badge>
+        ))}
+      </div>
+      <div>
+        <Button variant="primary" size="lg" iconLeft={<span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>+</span>} onClick={onAdd}>Add your first provider</Button>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = React.useState('overview');
+  const [modal, setModal] = React.useState(false);
+  const [seeded, setSeeded] = React.useState(true);
+
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'accounts', label: 'Accounts', count: window.FX.accounts.length },
+    { id: 'activity', label: 'Activity' },
+  ];
+
+  return (
+    <React.Fragment>
+      <window.TopBar onAdd={() => setModal(true)} />
+
+      <div style={{ position: 'sticky', top: 'var(--topbar-h)', zIndex: 15, background: 'rgba(10,12,17,0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid var(--border-faint)', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Tabs items={tabs} value={tab} onChange={setTab} />
+        <button onClick={() => setSeeded((s) => !s)} style={{ background: 'transparent', border: '1px solid var(--border-hairline)', color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', fontSize: 11, padding: '4px 9px', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}>
+          {seeded ? 'demo: empty state' : 'demo: seeded'}
+        </button>
+      </div>
+
+      <main style={{ maxWidth: 'var(--container-max)', margin: '0 auto', padding: '20px' }}>
+        {!seeded ? <EmptyState onAdd={() => setModal(true)} />
+          : tab === 'overview' ? <window.OverviewTab />
+          : tab === 'accounts' ? <window.AccountsTab onAdd={() => setModal(true)} />
+          : <window.ActivityTab />}
+      </main>
+
+      {modal && <window.AddAccountModal onClose={() => setModal(false)} />}
+    </React.Fragment>
+  );
+}
+
+// Live wiring: talk to the local fetchira server. window.FX starts as the bundled mock and
+// is replaced by real router state; mutations (add/remove/login/test) POST back and refresh.
+// A failed fetch (opened as a static file / offline) just keeps the mock so the design still
+// previews standalone.
+window.FX_TOKEN = new URLSearchParams(location.search).get('token') || '';
+
+window.apiPost = async function (path, body) {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-fetchira-token': window.FX_TOKEN },
+    body: JSON.stringify(body || {}),
+  });
+  let data = null;
+  try { data = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((data && data.error) || ('request failed (' + r.status + ')'));
+  return data;
+};
+
+async function loadFX() {
+  try {
+    const r = await fetch('/api/state', { headers: { 'x-fetchira-token': window.FX_TOKEN } });
+    if (r.ok) window.FX = Object.assign({}, window.FX, await r.json());
+  } catch (e) { /* standalone / offline → keep mock */ }
+}
+
+let __root;
+window.fxRefresh = async function () { await loadFX(); __root.render(<App />); };
+
+(async () => {
+  await loadFX();
+  __root = ReactDOM.createRoot(document.getElementById('root'));
+  __root.render(<App />);
+})();
+</script>
+</body>
+</html>

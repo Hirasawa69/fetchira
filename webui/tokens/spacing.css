@@ -1,0 +1,34 @@
+/* fetchira — Spacing, radius & layout tokens
+   Base unit 4px. Dense, deliberate scale. Tight mechanical radii (instrument
+   panel — never 12–24px on cards). px values auto-classify as spacing/radius. */
+
+:root {
+  /* Spacing scale (2 = base unit) */
+  --space-0:  0;
+  --space-1:  2px;
+  --space-2:  4px;
+  --space-3:  6px;
+  --space-4:  8px;
+  --space-5:  12px;
+  --space-6:  16px;
+  --space-7:  20px;
+  --space-8:  24px;
+  --space-9:  32px;
+  --space-10: 40px;
+  --space-11: 48px;
+  --space-12: 64px;
+
+  /* Radii — xs=segments/tags · sm=buttons/inputs/badges · md=cards/panels ·
+     lg=dialogs · pill=pills/dots. Keep small. */
+  --r-xs:   3px;    /* @kind radius */
+  --r-sm:   5px;    /* @kind radius */
+  --r-md:   7px;    /* @kind radius */
+  --r-lg:   10px;   /* @kind radius */
+  --r-pill: 999px;  /* @kind radius */
+
+  /* Layout */
+  --container-max: 1320px;
+  --topbar-h:      56px;
+  --gutter:        16px;
+  --card-pad:      16px;
+}

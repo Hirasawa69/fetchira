@@ -1,0 +1,42 @@
+/* fetchira elevation, borders, motion. Dark UI: depth comes from layered
+   surfaces + hairline borders + faint top highlight, NOT big soft drop shadows. */
+:root {
+  /* Elevation — subtle. Inset top highlight reads as machined metal. */
+  --elev-flat: 0 0 0 1px var(--border-hairline);
+  --elev-card:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    0 1px 2px rgba(0,0,0,0.5);
+  --elev-raised:
+    inset 0 1px 0 rgba(255,255,255,0.05),
+    0 10px 30px -12px rgba(0,0,0,0.7);
+  --elev-overlay:
+    0 0 0 1px var(--border-hairline),
+    0 24px 60px -16px rgba(0,0,0,0.8);
+
+  /* Accent glow — used sparingly on focus & live pulses. */
+  --glow-accent: 0 0 0 3px var(--lime-glow);
+  --glow-pulse: 0 0 12px 0 var(--lime-glow);
+
+  /* Motion — quick, mechanical, no bounce on UI chrome. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);   /* @kind other */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);/* @kind other */
+  --dur-fast: 120ms;    /* @kind other */
+  --dur-mid: 220ms;     /* @kind other */
+  --dur-meter: 700ms;   /* @kind other */
+
+  /* Background texture — faint grid, like a scope/oscilloscope. */
+  --grid-line: rgba(255,255,255,0.022); /* @kind color */
+}
+
+@keyframes fx-pulse {
+  0%   { box-shadow: 0 0 0 0 var(--lime-glow); }
+  70%  { box-shadow: 0 0 0 6px rgba(198,249,74,0); }
+  100% { box-shadow: 0 0 0 0 rgba(198,249,74,0); }
+}
+@keyframes fx-log-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fx-meter-fill {
+  from { transform: scaleX(0); }
+}

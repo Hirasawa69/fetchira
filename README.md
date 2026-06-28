@@ -1,0 +1,237 @@
+# fetchira
+
+One small binary that sits between your coding agent and every free web-search and
+scrape tier, and spends them so you don't have to think about it.
+
+![fetchira architecture](docs/architecture.png)
+
+---
+
+## What it is
+
+A handful of services give away a real amount of free web search every month — Serper,
+Tavily, Exa, Parallel for search, Jina and Firecrawl for reading pages, Steel for headless
+browsing. Your logged-in Gemini, Perplexity and Grok web sessions add even more. Used
+together they cover a lot of an agent's research, for free.
+
+The catch is the bookkeeping. Each provider has its own API, its own key, its own quota and
+its own reset window. To actually lean on the free tiers you have to remember which key goes
+where, track who is exhausted this month, and switch to another provider the moment one
+starts returning `429`. Nobody wants to do that by hand, and an agent certainly can't.
+
+fetchira is that bookkeeping, turned into a program. It is a single Rust binary that speaks
+**MCP** (the Model Context Protocol) to your coding agent. The agent asks for a generic
+capability — *search this*, *read this URL*, *do deep research*, *drive a browser* — and
+fetchira chooses the least-exhausted account for that capability, calls it, and fails over to
+the next one if it errors. It keeps a running count of what each account has left, so the
+free quota gets spent evenly instead of one key burning out while the rest sit idle.
+
+It also ships with a **local dashboard** so a human can watch the same thing in real time and
+manage accounts without touching a config file.
+
+## What you get
+
+| Capability | The agent calls | fetchira routes to (in preference order) |
+|---|---|---|
+| **search** | `search` | serper → tavily → exa → parallel → perplexity_web → gemini_web → grok_web |
+| **read** | `read` | jina → firecrawl |
+| **deep research** | `deep_research` | parallel → exa → tavily → perplexity_web → gemini_web → grok_web |
+| **browser** | `browser` | steel |
+| **usage** | `usage` | remaining quota per account + assigned proxy |
+
+- **Quota-aware routing.** Every call goes to the account with the most free quota left for
+  that capability. A `429`/`402` marks that budget exhausted for the period and the router
+  stops sending to it until the window resets.
+- **Automatic failover.** If the chosen account errors, fetchira moves to the next one for the
+  same capability and the agent never sees the hiccup. Force a single backend with
+  `provider: "exa"` and it fails over only among that provider's own accounts.
+- **Many accounts per provider.** Add `exa-1`, `exa-2`, … and the router load-balances across
+  them by remaining quota.
+- **A sticky proxy per account.** Give each account its own outbound IP (`proxy = "pool"` from
+  a Webshare pool, or a pinned URL) so multiple free accounts don't share one address.
+- **Web sessions, not just API keys.** gemini_web / perplexity_web / grok_web authenticate with
+  your real logged-in browser cookies and return a synthesized answer with sources — including
+  Gemini's multi-step Deep Research. See [Web sessions](#web-sessions) below.
+- **A local dashboard.** Live quota, a streaming route log, and full account management in the
+  browser — covered next.
+
+## The dashboard
+
+```sh
+fetchira ui          # opens http://127.0.0.1:7878 in your browser
+```
+
+An instrument panel for the router. The **Overview** groups every provider by capability and
+shows, per account, how much free quota is left and when it resets — next to a live log of
+calls as they happen.
+
+![Overview tab](docs/overview.png)
+
+**Accounts** is the management surface: every account with its quota bar, reset window, proxy,
+key/session status and health. Add, remove, re-login or send a real "Test" probe to any
+account, all from here — it writes the same config file the CLI does. Secrets are never sent
+to the browser (keys show as `•••• key set`, proxy credentials are masked).
+
+![Accounts tab](docs/accounts.png)
+
+**Activity** is the full route log with filters, per-provider health, and the failover story
+written out — `exa-1 429 → tavily-1`, last success and last error per provider.
+
+![Activity tab](docs/activity.png)
+
+Adding an account is a small form — pick a provider, paste a key (or log in, for web sessions),
+optionally pin a proxy:
+
+![Add account](docs/add-account.png)
+
+The whole dashboard is **self-contained and offline**: the assets (including React) are embedded
+in the binary, so there is no Node, no build step and no CDN. It binds to `127.0.0.1` only and
+is gated by a per-session token in the URL plus `Host`/`Origin` checks.
+
+## How it works
+
+One capability call turns into "pick an account, call it, fall back if it fails, record what
+happened" — and the dashboard sees the result live:
+
+![Request flow with failover](docs/request-flow.png)
+
+**Quota tracking.** Usage lives in a SQLite file (`usage.db`), keyed by `(account, period)`
+where the period is `YYYY-MM` (monthly), `YYYY-MM-DD` (daily) or `lifetime`. Each window is a
+fresh row, so quotas reset automatically when the calendar turns over. A successful call
+increments the counter; a `429`/`402` marks the budget exhausted for the period. These are
+**soft local guards** — the provider's `429` is always the source of truth and is what triggers
+failover. Deep research is tracked on its own daily budget per web provider, because those
+limits are tighter and time-windowed.
+
+**The dashboard is a separate process.** Your agent runs one fetchira process (the MCP server);
+`fetchira ui` is another. They never talk directly — they share the one `usage.db`. Every call
+the router serves is appended to a `route_log` table (including failover hops), and the
+dashboard reads quota and the route log straight from that file, streaming new lines to the
+browser over Server-Sent Events. That is why the live log keeps working no matter which process
+actually handled the request.
+
+**One binary, two modes.** The same executable is both the MCP server and the dashboard. Run
+bare `fetchira` from an interactive terminal and it opens the UI; when a coding tool launches it
+over piped stdio it serves MCP exactly as before. Force either with `fetchira serve` /
+`fetchira ui`, or set `FETCHIRA_NO_UI=1`.
+
+## Install and set up
+
+```sh
+./install.sh          # builds, installs the binary to ~/.local/bin, creates ~/.config/fetchira
+fetchira setup        # guided: pick providers, paste API keys, log into the web ones
+```
+
+`setup` walks every provider, asks which you want, prompts for the API key (key-based) or opens
+a browser to log in (web-session), and writes everything to **global config** in
+`~/.config/fetchira/` — no manual `.env` editing. Re-run any time. Config lives in
+`$FETCHIRA_HOME` or `~/.config/fetchira` (`fetchira.toml` + `usage.db`), so the binary works no
+matter which directory an MCP client launches it from.
+
+## CLI
+
+```sh
+fetchira ui                     # open the local dashboard (live quota, accounts, route log)
+fetchira providers              # list every available provider and what it does
+fetchira list                   # your accounts + remaining quota + login status
+fetchira add <provider>         # add an account (prompts for key, or logs in if web)
+                                #   flags: --label L  --key K  --proxy pool|URL
+fetchira remove <label>         # delete an account (and its session/usage)
+fetchira login <provider>       # (re)capture a web-session login
+fetchira install                # register fetchira with your coding tools
+fetchira help
+```
+
+`fetchira add tavily` asks for the key; `fetchira add gemini_web` opens a browser to log in.
+Multiple accounts per provider are fine (`--label tavily-2`); the router balances by remaining
+quota.
+
+## Register with your coding tools
+
+The binary **is** the MCP server (stdio). The easy way is to let it write each tool's config:
+
+```sh
+fetchira install
+```
+
+It detects and supports Claude Code, Codex CLI, OpenCode, Gemini CLI, Cursor, Windsurf, VS Code
+and Claude Desktop — multi-select, then it writes the right config shape for each (merging,
+never clobbering your existing servers). Restart the tool to pick it up.
+
+Manual registration is just as easy — point any MCP client at the binary:
+
+```sh
+claude mcp add fetchira -s user -- ~/.local/bin/fetchira     # Claude Code
+```
+```jsonc
+// generic mcp.json (Cursor, Windsurf, Gemini CLI, Claude Desktop)
+{ "mcpServers": { "fetchira": { "command": "/Users/you/.local/bin/fetchira" } } }
+```
+
+stdout is the MCP channel; logs go to stderr (`RUST_LOG=debug` for more). For Claude Code there
+is also a skill in `skills/fetchira/SKILL.md` — copy it to `~/.claude/skills/fetchira/SKILL.md`
+so the agent knows when and how to use the tools.
+
+## Web sessions
+
+gemini_web, perplexity_web and grok_web use your **logged-in browser cookies** instead of an API
+key, via a Chrome-impersonating client. One-time setup per provider:
+
+```sh
+fetchira login perplexity_web   # opens a browser; log in, then it captures the session
+fetchira login gemini_web
+fetchira login grok_web
+```
+
+`fetchira login <provider>` launches Chrome against a dedicated profile, waits for you to finish
+logging in, captures the cookies (HttpOnly included) over the DevTools protocol and stores them
+in `usage.db`. These accounts get the same sticky-proxy support as API accounts.
+
+**Conversations, models, modes.** Web results end with a `⟦session: …⟧` token; pass it back as
+`session` to continue the same chat with full history. Optional `model` and `mode` select per
+provider (best-effort; subscription features may be locked):
+
+```jsonc
+search { "query": "...", "provider": "gemini_web" }                       // -> answer + session token
+search { "query": "follow-up", "session": "gemini_web:c_…,r_…" }          // continues the chat
+```
+
+**Gemini Deep Research** runs the real multi-step flow — `deep_research` returns a plan, then you
+send `"start"` on the same session to run it (~1-3 min) and get the full report.
+
+Caveats, inherent to reverse-engineered web access:
+- **Sessions expire.** Cloudflare's `cf_clearance` lasts ~30 min to a few hours and cannot be
+  minted headless. Re-run `fetchira login <provider>` when a provider returns session/403 errors;
+  the router fails over to the API providers meanwhile.
+- **Grok is intermittent.** fetchira forges the anti-bot `x-statsig-id` per request, which gets
+  past grok.com, but grok is aggressive on IP reputation and rate. Better odds: a fresh login, a
+  residential `proxy`, and no bursting. The router fails over when grok blocks.
+- Requires Chrome/Chromium/Edge/Brave installed; the first build compiles BoringSSL (needs
+  `cmake` + Xcode CLT).
+
+## Tuning quota
+
+The per-account numbers are nominal defaults — set them in `fetchira.toml` to match your real
+plan. Web providers track chat and deep research on separate budgets:
+
+```toml
+[[account]]
+provider = "gemini_web"
+label    = "gemini-1"
+quota    = 5000          # chat/search budget
+reset    = "monthly"     # monthly | daily | once
+dr_quota = 100           # deep-research budget (e.g. an AI Pro/Ultra tier)
+dr_reset = "daily"
+```
+
+A Webshare proxy pool is optional; accounts with `proxy = "pool"` draw a sticky proxy from it.
+See `fetchira.toml.example` and `.env.example` for the full shape.
+
+## Build and verify
+
+```sh
+cargo build --release
+cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+```
+
+Research notes that shaped the design live in [`research/`](research/).

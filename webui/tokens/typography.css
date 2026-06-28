@@ -1,0 +1,42 @@
+/* fetchira — Type & font tokens
+   Display / wordmark / headings : Space Grotesk (technical grotesk character)
+   UI body, labels, table text    : Hanken Grotesk (warm, legible neutral)
+   Numbers, URLs, log lines, data  : JetBrains Mono (developer-native monospace)
+   @font-face / loading lives in tokens/fonts.css. */
+
+:root {
+  /* Families */
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;       /* @kind font */
+  --font-ui:      'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;      /* @kind font */
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; /* @kind font */
+
+  /* Type scale (px → classified as spacing). Usage:
+     display = tab heroes / hero readouts · h2 = card+dialog titles ·
+     h3 = sub-section headings · body = default UI · label = pills/meta ·
+     micro = dense meta / log timestamps. */
+  --fs-display: 34px;
+  --fs-h1:      24px;
+  --fs-h2:      19px;
+  --fs-h3:      15px;
+  --fs-body:    14px;
+  --fs-sm:      13px;
+  --fs-label:   12px;
+  --fs-micro:   11px;
+
+  /* Line heights */
+  --lh-tight: 1.1;  /* @kind other */
+  --lh-snug:  1.3;  /* @kind other */
+  --lh-body:  1.5;  /* @kind other */
+
+  /* Letter-spacing — tight=display · label=mono micro-labels · wide=all-caps eyebrows */
+  --ls-tight:  -0.02em;  /* @kind other */
+  --ls-normal: 0;        /* @kind other */
+  --ls-label:  0.04em;   /* @kind other */
+  --ls-wide:   0.12em;   /* @kind other */
+
+  /* Weights */
+  --fw-regular:  400;  /* @kind font */
+  --fw-medium:   500;  /* @kind font */
+  --fw-semibold: 600;  /* @kind font */
+  --fw-bold:     700;  /* @kind font */
+}

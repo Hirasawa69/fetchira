@@ -1,0 +1,63 @@
+/* fetchira — Color tokens
+   Dark-mode-first instrument panel. Deep slate canvas, layered surfaces,
+   hairline borders, one electric-lime "fuel" accent, clear semantic states. */
+
+:root {
+  /* ---- Canvas & surfaces (cool near-black slate) ---- */
+  --bg-void:       #06070A;  /* deepest well — log feed, recessed tracks */
+  --bg-base:       #0A0C11;  /* app canvas */
+  --surface-1:     #0F1218;  /* card surface */
+  --surface-2:     #151922;  /* raised within card / row hover */
+  --surface-3:     #1B2130;  /* popover / menu / active row */
+  --surface-inset: #0B0D12;  /* meter tracks, input wells */
+
+  /* ---- Hairline borders ---- */
+  --border-faint:    rgba(255,255,255,0.06);
+  --border-hairline: rgba(255,255,255,0.09);
+  --border-strong:   rgba(255,255,255,0.15);
+  --border-accent:   rgba(198,249,74,0.45);
+
+  /* ---- Text ---- */
+  --text-hi:        #ECEFF4;  /* primary copy, headings */
+  --text-mid:       #9DA7B5;  /* labels, body */
+  --text-lo:        #626C7C;  /* captions, meta, placeholders */
+  --text-faint:     #434C5A;  /* disabled */
+  --text-on-accent: #0A0C11;  /* text on lime fills */
+
+  /* ---- Brand accent — electric lime (the "free fuel" gauge) ---- */
+  --lime-500: #C6F94A;  /* base accent */
+  --lime-400: #D4FB6B;  /* hover / glow peak */
+  --lime-600: #A9E022;  /* pressed / on-dark fill border */
+  --lime-dim:  rgba(198,249,74,0.14);  /* tint wash */
+  --lime-glow: rgba(198,249,74,0.30);  /* focus ring / live pulse */
+
+  /* ---- Capability accent (read/scrape, sessions) ---- */
+  --cyan-500: #34D6E6;
+  --cyan-dim: rgba(52,214,230,0.14);
+
+  /* ---- Semantic — gauge states ---- */
+  --green-500: #46D17A;  /* healthy / plenty */
+  --green-dim: rgba(70,209,122,0.14);
+  --amber-500: #F5A524;  /* running low / needs attention */
+  --amber-dim: rgba(245,165,36,0.15);
+  --red-500:   #F2555A;  /* exhausted / error */
+  --red-dim:   rgba(242,85,90,0.15);
+  --grey-500:  #5B6576;  /* disabled / needs-login / no data */
+  --grey-dim:  rgba(91,101,118,0.16);
+
+  /* ---- Semantic aliases ---- */
+  --accent:        var(--lime-500);
+  --accent-hover:  var(--lime-400);
+  --accent-press:  var(--lime-600);
+  --text-body:     var(--text-mid);
+  --text-heading:  var(--text-hi);
+  --text-muted:    var(--text-lo);
+  --surface-card:   var(--surface-1);
+  --surface-raised: var(--surface-2);
+  --surface-well:   var(--surface-inset);
+  --health-ok:   var(--green-500);
+  --health-low:  var(--amber-500);
+  --health-out:  var(--red-500);
+  --health-off:  var(--grey-500);
+  --focus-ring:  var(--lime-glow);
+}

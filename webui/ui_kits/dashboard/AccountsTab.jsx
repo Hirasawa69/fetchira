@@ -1,0 +1,115 @@
+/* Accounts: management table. API keys never shown — masked chip only. */
+const { Card, Badge, Button, QuotaMeter, StatusDot } = window.FetchiraDesignSystem_6526df;
+
+function statusBadge(s) {
+  if (s === 'exhausted') return <Badge tone="out" dot>exhausted</Badge>;
+  if (s === 'needs-login') return <Badge tone="off" dot>needs login</Badge>;
+  return <Badge tone="ok" dot>healthy</Badge>;
+}
+
+function Th({ children, style }) {
+  return <th style={{ textAlign: 'left', fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-faint)', padding: '0 14px 10px', ...style }}>{children}</th>;
+}
+
+function RowActions({ r }) {
+  const [busy, setBusy] = React.useState(false);
+  const [test, setTest] = React.useState(null);
+  const [confirmRm, setConfirmRm] = React.useState(false);
+  const needsLogin = r.status === 'needs-login';
+
+  const doTest = async () => {
+    if (busy) return;
+    setBusy(true); setTest(null);
+    try { setTest(await window.apiPost('/api/account/test', { label: r.label })); }
+    catch (e) { setTest({ ok: false, error: String(e.message || e) }); }
+    setBusy(false);
+  };
+  const doLogin = async () => {
+    if (busy) return;
+    setBusy(true); setTest(null);
+    try { await window.apiPost('/api/account/login', { label: r.label }); if (window.fxRefresh) window.fxRefresh(); }
+    catch (e) { setTest({ ok: false, error: String(e.message || e) }); setBusy(false); }
+  };
+  const doRemove = async () => {
+    if (busy) return;
+    if (!confirmRm) { setConfirmRm(true); return; }
+    setBusy(true);
+    try { await window.apiPost('/api/account/remove', { label: r.label }); if (window.fxRefresh) window.fxRefresh(); }
+    catch (e) { setTest({ ok: false, error: String(e.message || e) }); setBusy(false); setConfirmRm(false); }
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+      {test && <span title={test.error || ''} style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: test.ok ? 'var(--green-500)' : 'var(--red-500)' }}>{test.ok ? ('✓ ' + test.latencyMs + 'ms') : '✕ failed'}</span>}
+      <Button size="sm" variant="ghost" onClick={doTest}>Test</Button>
+      {r.web && <Button size="sm" variant={needsLogin ? 'primary' : 'secondary'} onClick={doLogin}>{needsLogin ? 'Login' : 'Re-login'}</Button>}
+      <Button size="sm" variant="ghost" onClick={doRemove} style={{ color: confirmRm ? 'var(--red-500)' : 'var(--text-faint)' }}>{confirmRm ? 'Confirm?' : 'Remove'}</Button>
+    </div>
+  );
+}
+
+function AccountsTab({ onAdd }) {
+  const rows = window.FX.accounts;
+  return (
+    <Card pad={0} style={{ overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--border-hairline)' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, color: 'var(--text-hi)' }}>Accounts</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-lo)' }}>{rows.length} configured</span>
+        </div>
+        <Button variant="primary" size="sm" iconLeft={<span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>+</span>} onClick={onAdd}>Add account</Button>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 880 }}>
+          <thead>
+            <tr style={{ background: 'var(--surface-inset)' }}>
+              <th style={{ padding: '10px 0' }} />
+              <Th style={{ paddingTop: 10 }}>Account</Th>
+              <Th style={{ paddingTop: 10, width: 220 }}>Quota</Th>
+              <Th style={{ paddingTop: 10 }}>Reset</Th>
+              <Th style={{ paddingTop: 10 }}>Proxy</Th>
+              <Th style={{ paddingTop: 10 }}>Key</Th>
+              <Th style={{ paddingTop: 10 }}>Status</Th>
+              <Th style={{ paddingTop: 10, textAlign: 'right' }}>Actions</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const needsLogin = r.status === 'needs-login';
+              return (
+                <tr key={r.label} style={{ borderTop: '1px solid var(--border-faint)' }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+                  <td style={{ width: 8, padding: 0 }}>
+                    <span style={{ display: 'block', width: 3, height: 34, marginLeft: 6, borderRadius: 2, background: r.status === 'exhausted' ? 'var(--red-500)' : needsLogin ? 'var(--grey-500)' : 'var(--green-500)' }} />
+                  </td>
+                  <td style={{ padding: '12px 14px' }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-hi)', fontWeight: 600 }}>{r.label}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-faint)' }}>{r.provider}</div>
+                  </td>
+                  <td style={{ padding: '12px 14px' }}>
+                    <QuotaMeter used={r.used} quota={r.quota} variant="bar" size="sm" showValues={false} state={needsLogin ? 'off' : undefined} style={{ marginBottom: 4 }} />
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-lo)' }}>{needsLogin ? '—' : (r.quota - r.used).toLocaleString()} <span style={{ color: 'var(--text-faint)' }}>/ {r.quota.toLocaleString()}</span></span>
+                  </td>
+                  <td style={{ padding: '12px 14px' }}><Badge tone="neutral" variant="outline" uppercase>{r.resetWindow}</Badge></td>
+                  <td style={{ padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, color: r.proxy === 'direct' ? 'var(--text-faint)' : 'var(--text-mid)' }}>
+                    {r.proxy === 'pool' ? <Badge tone="cyan" variant="outline">pool</Badge> : r.proxy}
+                  </td>
+                  <td style={{ padding: '12px 14px' }}>
+                    {r.key ? <Badge tone="ok" variant="outline">•••• key set</Badge> : r.web ? <Badge tone={r.loggedIn ? 'cyan' : 'off'} variant="outline">{r.loggedIn ? 'session ✓' : 'no session'}</Badge> : <Badge tone="off" variant="outline">no key</Badge>}
+                  </td>
+                  <td style={{ padding: '12px 14px' }}>{statusBadge(r.status)}</td>
+                  <td style={{ padding: '12px 14px' }}>
+                    <RowActions r={r} />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+window.AccountsTab = AccountsTab;

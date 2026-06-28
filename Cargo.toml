@@ -1,0 +1,38 @@
+[package]
+name = "fetchira"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "fetchira"
+path = "src/main.rs"
+
+[dependencies]
+rmcp = { version = "1.8", features = ["server", "macros", "transport-io"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "time", "process", "net", "fs"] }
+reqwest = { version = "0.13", features = ["json"] }
+# Browser TLS/JA3 + HTTP2 fingerprint impersonation for the cookie-auth web providers.
+wreq = { version = "5", features = ["cookies", "gzip", "brotli", "zstd", "deflate"] }
+wreq-util = "2"
+tokio-tungstenite = "0.27"
+futures-util = "0.3"
+base64 = "0.22"
+inquire = "0.7"
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }
+serde = { version = "1", features = ["derive"] }
+schemars = "1.0"
+serde_json = "1"
+toml = "0.8"
+dotenvy = "0.15"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Local web dashboard (`fetchira ui`): embedded axum server + assets baked into the binary.
+axum = "0.8"
+rust-embed = "8"
+open = "5"
+
+[dev-dependencies]
+wiremock = "0.6"

@@ -1,0 +1,57 @@
+# fetchira config. Copy to fetchira.toml. Lives in the fetchira home dir
+# ($FETCHIRA_HOME or ~/.config/fetchira), so it's found no matter where an MCP client launches the binary.
+db_path = "usage.db"
+
+# Optional: a Webshare proxy pool. Accounts with proxy = "pool" get a sticky proxy from it.
+# [proxy_pool]
+# webshare_url = "https://proxy.webshare.io/api/v2/proxy/list/download/<token>/-/any/username/direct/-/?plan_id=<id>"
+
+# --- Key-based providers (api_key = literal or "env:VAR" resolved from .env) ---
+[[account]]
+provider = "serper"
+label = "serper-1"
+api_key = "env:SERPER_API_KEY"
+
+[[account]]
+provider = "tavily"
+label = "tavily-1"
+api_key = "env:TAVILY_API_KEY"
+# proxy = "pool"
+
+[[account]]
+provider = "exa"
+label = "exa-1"
+api_key = "env:EXA_API_KEY"
+
+[[account]]
+provider = "jina"
+label = "jina-1"
+api_key = "env:JINA_API_KEY"
+
+[[account]]
+provider = "firecrawl"
+label = "firecrawl-1"
+api_key = "env:FIRECRAWL_API_KEY"
+
+[[account]]
+provider = "parallel"
+label = "parallel-1"
+api_key = "env:PARALLEL_API_KEY"
+
+[[account]]
+provider = "steel"
+label = "steel-1"
+api_key = "env:STEEL_API_KEY"
+
+# --- Web-session providers (no api_key). Run `fetchira login <provider>` once to capture cookies. ---
+[[account]]
+provider = "perplexity_web"
+label = "perplexity-1"
+
+[[account]]
+provider = "gemini_web"
+label = "gemini-1"
+
+[[account]]
+provider = "grok_web"
+label = "grok-1"

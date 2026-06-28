@@ -1,0 +1,9 @@
+/* fetchira design system — global entry point.
+   Consumers link THIS file. Keep it to @import lines only. */
+
+@import url('./tokens/fonts.css');       /* webfont loading */
+@import url('./tokens/colors.css');       /* palette + semantic aliases */
+@import url('./tokens/typography.css');   /* fonts, scale, weights */
+@import url('./tokens/spacing.css');      /* spacing, radius, layout */
+@import url('./tokens/effects.css');      /* elevation, glow, motion, keyframes */
+@import url('./tokens/base.css');         /* element resets + utilities */
