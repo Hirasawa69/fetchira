@@ -179,7 +179,7 @@ impl Router {
             if matches!(forced, Some(f) if f != kind) {
                 continue;
             }
-            let mut cands: Vec<(usize, i64, String, String)> = Vec::new();
+            let mut cands: Vec<(usize, i64, String, i64, String)> = Vec::new();
             for (i, b) in self.buckets.iter().enumerate() {
                 if b.provider.kind != kind {
                     continue;
@@ -188,13 +188,24 @@ impl Router {
                 let period = period_key(breset);
                 let rem = self.store.remaining(&blabel, bquota, &period).await?;
                 if rem > 0 {
-                    cands.push((i, rem, blabel, period));
+                    cands.push((i, rem, blabel, bquota, period));
                 }
             }
             cands.sort_by(|a, c| c.1.cmp(&a.1));
 
-            for (i, _rem, blabel, period) in cands {
+            for (i, _rem, blabel, bquota, period) in cands {
                 let b = &self.buckets[i];
+                // Reserve the slot *before* the network call so concurrent tasks can't all clear the
+                // same `remaining > 0` gate and stampede one account past its quota. Claim a nominal
+                // 1 (the per-call minimum), settle the real cost on success, refund on any failure.
+                // A `false` means a sibling took the last slot meanwhile — move to the next account.
+                if !self
+                    .store
+                    .reserve(kind.as_str(), &blabel, bquota, &period, 1)
+                    .await?
+                {
+                    continue;
+                }
                 let t0 = Instant::now();
                 let res = match &b.conn {
                     Conn::Api(c) => b.provider.call(&b.key, c, cap, input).await,
@@ -204,9 +215,13 @@ impl Router {
                 let acct = strip_dr(&blabel);
                 match res {
                     Ok(o) => {
-                        self.store
-                            .record(kind.as_str(), &blabel, &period, o.cost)
-                            .await?;
+                        // The reservation already charged 1; settle the rest for costlier calls.
+                        if o.cost != 1 {
+                            let _ = self
+                                .store
+                                .record(kind.as_str(), &blabel, &period, o.cost - 1)
+                                .await;
+                        }
                         // Best-effort route log (never fail the call over telemetry).
                         let _ = self
                             .store
@@ -226,28 +241,33 @@ impl Router {
                             session,
                         });
                     }
-                    Err(e @ (Error::RateLimit(_) | Error::QuotaExceeded(_))) => {
-                        self.store
-                            .mark_exhausted(kind.as_str(), &blabel, &period)
-                            .await?;
-                        let code = if matches!(e, Error::RateLimit(_)) {
-                            429
-                        } else {
-                            402
-                        };
-                        prev_fail = Some((acct.to_string(), code));
-                        last_err = Some(e);
+                    Err(e) => {
+                        // The reserved unit never became real usage — give it back.
+                        let _ = self.store.refund(&blabel, &period, 1).await;
+                        match e {
+                            Error::RateLimit(_) | Error::QuotaExceeded(_) => {
+                                let _ = self
+                                    .store
+                                    .mark_exhausted(kind.as_str(), &blabel, &period)
+                                    .await;
+                                let code = if matches!(e, Error::RateLimit(_)) {
+                                    429
+                                } else {
+                                    402
+                                };
+                                prev_fail = Some((acct.to_string(), code));
+                                last_err = Some(e);
+                            }
+                            Error::Provider { .. }
+                            | Error::Transport(_)
+                            | Error::Timeout(_)
+                            | Error::BadResponse(_) => {
+                                prev_fail = Some((acct.to_string(), 0));
+                                last_err = Some(e);
+                            }
+                            _ => return Err(e),
+                        }
                     }
-                    Err(
-                        e @ (Error::Provider { .. }
-                        | Error::Transport(_)
-                        | Error::Timeout(_)
-                        | Error::BadResponse(_)),
-                    ) => {
-                        prev_fail = Some((acct.to_string(), 0));
-                        last_err = Some(e);
-                    }
-                    Err(e) => return Err(e),
                 }
             }
         }

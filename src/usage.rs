@@ -1,5 +1,5 @@
 use chrono::Utc;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqliteSynchronous};
 use sqlx::Row;
 
 use crate::config::Reset;
@@ -43,7 +43,10 @@ impl Store {
     pub async fn open(path: &str) -> Result<Self> {
         let opts = SqliteConnectOptions::new()
             .filename(path)
-            .create_if_missing(true);
+            .create_if_missing(true)
+            // WAL so readers don't block the writer when several processes share this file.
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal);
         let pool = SqlitePool::connect_with(opts).await?;
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS usage (
@@ -157,6 +160,43 @@ impl Store {
                 exhausted: false,
             },
         })
+    }
+
+    /// Atomically claim `cost` units, or return `false` if granting it would exceed `quota` (or the
+    /// account is exhausted) — closes the read-then-write race where concurrent callers all clear
+    /// the same `remaining > 0` gate. Caller must `refund` if the reserved attempt then fails.
+    pub async fn reserve(
+        &self,
+        provider: &str,
+        label: &str,
+        quota: i64,
+        period: &str,
+        cost: i64,
+    ) -> Result<bool> {
+        let res = sqlx::query(
+            "INSERT INTO usage (provider, label, period, used) VALUES (?, ?, ?, ?)
+             ON CONFLICT(label, period) DO UPDATE SET used = used + excluded.used
+                WHERE exhausted = 0 AND used + excluded.used <= ?",
+        )
+        .bind(provider)
+        .bind(label)
+        .bind(period)
+        .bind(cost)
+        .bind(quota)
+        .execute(&self.pool)
+        .await?;
+        Ok(res.rows_affected() == 1)
+    }
+
+    /// Hand back a reserved `cost` after the attempt it was claimed for failed.
+    pub async fn refund(&self, label: &str, period: &str, cost: i64) -> Result<()> {
+        sqlx::query("UPDATE usage SET used = max(used - ?, 0) WHERE label = ? AND period = ?")
+            .bind(cost)
+            .bind(label)
+            .bind(period)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn record(&self, provider: &str, label: &str, period: &str, cost: i64) -> Result<()> {
@@ -341,6 +381,46 @@ mod tests {
         assert_eq!(since.len(), 1);
         assert_eq!(since[0].label, "tavily-1");
         assert_eq!(store.max_route_id().await.unwrap(), recent[1].id);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn reserve_gates_quota() {
+        let path = std::env::temp_dir().join(format!("fetchira_reserve_{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let store = Store::open(path.to_str().unwrap()).await.unwrap();
+
+        // Quota 3: the first three reservations win, the fourth is denied.
+        for _ in 0..3 {
+            assert!(store
+                .reserve("grok_web", "grok-1#dr", 3, "d", 1)
+                .await
+                .unwrap());
+        }
+        assert!(!store
+            .reserve("grok_web", "grok-1#dr", 3, "d", 1)
+            .await
+            .unwrap());
+        assert_eq!(store.remaining("grok-1#dr", 3, "d").await.unwrap(), 0);
+
+        // A refund frees exactly one slot back.
+        store.refund("grok-1#dr", "d", 1).await.unwrap();
+        assert!(store
+            .reserve("grok_web", "grok-1#dr", 3, "d", 1)
+            .await
+            .unwrap());
+
+        // Once exhausted, no reservation succeeds even with budget refunded.
+        store.refund("grok-1#dr", "d", 1).await.unwrap();
+        store
+            .mark_exhausted("grok_web", "grok-1#dr", "d")
+            .await
+            .unwrap();
+        assert!(!store
+            .reserve("grok_web", "grok-1#dr", 3, "d", 1)
+            .await
+            .unwrap());
 
         let _ = std::fs::remove_file(&path);
     }
