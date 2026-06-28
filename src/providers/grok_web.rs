@@ -1,15 +1,13 @@
 use base64::Engine;
 use serde_json::{json, Value};
 
-use super::{with_sources, Capability, Input, LiveQuota, Outcome};
+use super::{uuid4, with_sources, Capability, Input, LiveQuota, Outcome};
 use crate::error::{Error, Result};
 
-/// grok.com's anti-bot wants an `x-statsig-id` that a real browser's Statsig SDK computes per
-/// request; when that signer can't initialize it falls back to base64 of its own thrown error,
-/// which xAI accepts. A *static* fallback gets fingerprinted and 403'd, so randomize the error
-/// text each call (the approach the maintained grok2api ports use).
-/// ponytail: forged fallback. If xAI stops accepting it, port grok-bypass's real SVG-animation
-/// signer (sha256 over method+path+ts+salt+sampled-curve) — see README.
+/// grok's anti-bot `x-statsig-id`. We send grok's own degraded-mode value: base64 of a thrown
+/// `TypeError`, which xAI accepts when a real client's Statsig SDK fails to init. A *static* value
+/// gets fingerprinted and 403'd, so randomize the error text each call. The real signed token (and
+/// why we don't compute it) is documented in `research/grok-statsig/`.
 fn statsig_id() -> String {
     let props = [
         "childNodes",
@@ -87,6 +85,7 @@ pub async fn call(
             "sentry-public_key=b311e0f2690c81f25e2c4cf6d4f7ce1c",
         )
         .header("x-statsig-id", statsig_id())
+        .header("x-xai-request-id", uuid4())
         .body(body.to_string())
         .send()
         .await?;
@@ -101,12 +100,13 @@ pub async fn call(
             })
         }
         403 => {
+            // Anti-bot rejection (usually IP reputation / rate, not the cookie session). Re-login
+            // won't help; the router fails over to other providers.
             return Err(Error::Provider {
                 provider: "grok_web",
                 status,
-                body: "anti-bot rejected (stale x-statsig-id); re-run `fetchira login grok_web`"
-                    .into(),
-            })
+                body: "grok anti-bot rejected this request (IP/rate); failing over".into(),
+            });
         }
         429 => return Err(Error::RateLimit("grok_web: rate limited".into())),
         _ => {}
@@ -127,6 +127,7 @@ pub async fn rate_limit(base: &str, client: &wreq::Client, model: &str) -> Resul
             "sentry-public_key=b311e0f2690c81f25e2c4cf6d4f7ce1c",
         )
         .header("x-statsig-id", statsig_id())
+        .header("x-xai-request-id", uuid4())
         .body(body.to_string())
         .send()
         .await?;
@@ -333,9 +334,8 @@ mod tests {
 
     #[test]
     fn statsig_is_base64_x1() {
-        let id = statsig_id();
         let raw = base64::engine::general_purpose::STANDARD
-            .decode(&id)
+            .decode(statsig_id())
             .unwrap();
         assert!(String::from_utf8(raw).unwrap().starts_with("x1:TypeError"));
     }

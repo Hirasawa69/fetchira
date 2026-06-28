@@ -43,8 +43,8 @@ fn slash() -> String {
     "/".into()
 }
 
-/// A captured web session: cookies plus any non-cookie headers harvested at login
-/// (e.g. grok.com's `x-statsig-id`, which is minted by in-page JS, not a cookie).
+/// A captured web session: cookies plus any extra default headers to send with them. (grok's
+/// `x-statsig-id` is not a cookie — it's generated per request in `providers::grok_web`.)
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub cookies: Vec<Cookie>,
