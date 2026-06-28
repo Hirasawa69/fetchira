@@ -122,6 +122,13 @@ const CHROME_PATHS: &[&str] = &[
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
     "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
     "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/microsoft-edge",
+    "/usr/bin/brave-browser",
+    "/snap/bin/chromium",
 ];
 
 fn chrome_bin() -> Option<&'static str> {
@@ -148,9 +155,13 @@ fn login_target(kind: ProviderKind) -> Result<(&'static str, &'static str, &'sta
 /// One Chrome profile per account label, so multiple accounts of the same provider can each be
 /// logged into a different account (e.g. gemini-1 and gemini-2 as two different Google users).
 fn profile_dir(label: &str) -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_default())
-        .join("Library/Application Support/fetchira")
-        .join(format!("chrome-{label}"))
+    let base = if cfg!(target_os = "macos") {
+        PathBuf::from(std::env::var("HOME").unwrap_or_default())
+            .join("Library/Application Support/fetchira")
+    } else {
+        crate::cli::home()
+    };
+    base.join(format!("chrome-{label}"))
 }
 
 /// Launch a real Chrome on this account's dedicated profile, let the user log in, and capture
