@@ -6,6 +6,7 @@ pub mod providers;
 pub mod proxy;
 pub mod router;
 pub mod ui;
+pub mod update;
 pub mod usage;
 pub mod web;
 

@@ -170,9 +170,17 @@ async fn api_state(State(st): State<Arc<AppState>>, headers: HeaderMap) -> Respo
     if let Some(resp) = guard(&st, &headers) {
         return resp;
     }
-    let inner = st.inner.read().await;
-    match build_state(&inner, &st.store).await {
-        Ok(v) => Json(v).into_response(),
+    let built = {
+        let inner = st.inner.read().await;
+        build_state(&inner, &st.store).await
+    };
+    match built {
+        Ok(mut v) => {
+            if let Some(u) = crate::update::ui_banner(&st.home).await {
+                v["update"] = u;
+            }
+            Json(v).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

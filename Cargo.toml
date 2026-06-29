@@ -2,6 +2,12 @@
 name = "fetchira"
 version = "0.1.0"
 edition = "2021"
+description = "Quota-aware web-search/scrape MCP server and CLI that routes across free provider tiers"
+repository = "https://github.com/ImmuneFOMO/fetchira"
+homepage = "https://github.com/ImmuneFOMO/fetchira"
+license = "Apache-2.0"
+keywords = ["mcp", "web-search", "scraping", "agent", "cli"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "fetchira"
@@ -33,6 +39,15 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 axum = "0.8"
 rust-embed = "8"
 open = "5"
+# Self-update (`fetchira update`): atomic in-place replace of the running binary.
+self-replace = "1"
+semver = "1"
+sha2 = "0.10"
 
 [dev-dependencies]
 wiremock = "0.6"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

@@ -784,6 +784,8 @@ pub fn help() {
            fetchira add <provider>      add an account  [--label L] [--key K] [--proxy pool|URL]\n  \
            fetchira remove <label>      delete an account\n  \
            fetchira login <provider>    (re)capture a web-session login (gemini_web/perplexity_web/grok_web)\n  \
+           fetchira update              download & install the latest release\n  \
+           fetchira --version           print the installed version\n  \
            fetchira help                this message\n\n\
          Config lives in $FETCHIRA_HOME or ~/.config/fetchira (fetchira.toml + usage.db)."
     );

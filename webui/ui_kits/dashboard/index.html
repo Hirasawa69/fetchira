@@ -61,6 +61,15 @@ function OfflineToast() {
   );
 }
 
+function UpdateBanner({ u }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 auto 16px', padding: '10px 16px', background: 'var(--lime-dim, rgba(170,230,90,0.12))', border: '1px solid rgba(170,230,90,0.35)', borderRadius: 'var(--r-sm)', fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--text-hi)' }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--lime-500)' }} />
+      <span>fetchira <b>{u.latest}</b> is available — run <code style={{ fontFamily: 'var(--font-mono)', background: 'rgba(255,255,255,0.07)', padding: '1px 6px', borderRadius: 4, color: 'var(--text-hi)' }}>{u.command}</code></span>
+    </div>
+  );
+}
+
 function App() {
   const [tab, setTab] = React.useState('overview');
   const [modal, setModal] = React.useState(false);
@@ -100,6 +109,7 @@ function App() {
       </div>
 
       <main style={{ maxWidth: 'var(--container-max)', margin: '0 auto', padding: '20px' }}>
+        {window.FX.update && <UpdateBanner u={window.FX.update} />}
         {!seeded ? <EmptyState onAdd={() => setModal(true)} />
           : tab === 'overview' ? <window.OverviewTab />
           : tab === 'accounts' ? <window.AccountsTab onAdd={() => setModal(true)} />

@@ -1,0 +1,15 @@
+[workspace]
+# fetchira is a binary, not a crates.io library: derive versions from git tags
+# and never run `cargo publish`.
+git_only = true
+publish = false
+
+# release-plz only creates the tag; dist creates the GitHub Release (with the
+# build artifacts + Homebrew formula) off that tag.
+git_tag_enable = true
+git_release_enable = false
+
+changelog_update = true
+dependencies_update = false   # heavy deps — don't `cargo update` on every release
+semver_check = false          # not a library, no API-breaking check
+pr_labels = ["release"]

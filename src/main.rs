@@ -18,8 +18,17 @@ async fn main() -> anyhow::Result<()> {
     dotenvy::from_path(home.join(".env")).ok();
     dotenvy::dotenv().ok();
 
+    use std::io::IsTerminal;
     let mut args = std::env::args().skip(1);
-    match args.next().as_deref() {
+    let cmd = args.next();
+    // Passive "new version available" nudge — stderr + TTY only (self-silences under MCP
+    // stdio). Skip the serve path (explicit `serve`, or bare with piped stdin) and `update`.
+    let serving = matches!(cmd.as_deref(), Some("serve"))
+        || (cmd.is_none() && !std::io::stdin().is_terminal());
+    if !serving && cmd.as_deref() != Some("update") {
+        fetchira::update::nudge_if_stale(&home).await;
+    }
+    match cmd.as_deref() {
         Some("setup") => return cli::setup(&home).await,
         Some("providers") => {
             cli::providers();
@@ -31,6 +40,11 @@ async fn main() -> anyhow::Result<()> {
         Some("remove") | Some("rm") => return cli::remove(&home, args.next()).await,
         Some("login") => return cli::login(&home, args.next()).await,
         Some("ui") => return fetchira::ui::run(&home).await,
+        Some("update") => return fetchira::update::run(&home).await,
+        Some("--version") | Some("-V") | Some("version") => {
+            println!("fetchira {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
         Some("help") | Some("-h") | Some("--help") => {
             cli::help();
             return Ok(());
@@ -39,7 +53,6 @@ async fn main() -> anyhow::Result<()> {
         // Bare `fetchira` from an interactive terminal opens the dashboard; piped
         // (an MCP client) it serves stdio. `FETCHIRA_NO_UI=1` forces serve either way.
         None => {
-            use std::io::IsTerminal;
             if std::io::stdin().is_terminal() && std::env::var("FETCHIRA_NO_UI").is_err() {
                 return fetchira::ui::run(&home).await;
             }
