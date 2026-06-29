@@ -39,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
         Some("add") => return cli::add(&home, args).await,
         Some("remove") | Some("rm") => return cli::remove(&home, args.next()).await,
         Some("login") => return cli::login(&home, args.next()).await,
+        Some("session") => return cli::session(&home, args).await,
         Some("ui") => return fetchira::ui::run(&home).await,
         Some("update") => return fetchira::update::run(&home).await,
         Some("--version") | Some("-V") | Some("version") => {

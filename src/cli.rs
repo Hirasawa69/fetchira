@@ -192,7 +192,12 @@ pub async fn add(home: &Path, mut args: impl Iterator<Item = String>) -> anyhow:
 
     if kind.is_web() {
         let cfg = load_or_empty(home);
-        do_login(home, &cfg, kind, &label).await?;
+        // Best-effort: the account is saved either way. On a headless box with no browser,
+        // tell the user how to attach the session by hand.
+        if let Err(e) = do_login(home, &cfg, kind, &label).await {
+            println!("login skipped: {e}");
+            println!("attach a session manually:  fetchira session {label} < session.json");
+        }
     }
     Ok(())
 }
@@ -266,6 +271,60 @@ pub async fn capture_login(home: &Path, label: &str) -> anyhow::Result<()> {
     do_login(home, &cfg, kind, label).await
 }
 
+/// Validate a session JSON captured elsewhere (cookies exported from any browser) and store it
+/// for an existing web account. Returns the cookie count. Shared by the CLI and web UI.
+pub async fn set_session(home: &Path, label: &str, raw: &str) -> anyhow::Result<usize> {
+    let cfg = load_or_empty(home);
+    let acc = cfg
+        .accounts
+        .iter()
+        .find(|a| a.label == label)
+        .with_context(|| {
+            format!("no account labelled '{label}' — add one first with `fetchira add <provider> --label {label}`")
+        })?;
+    if !acc.provider.is_web() {
+        bail!("'{}' is not a web-session provider", acc.provider.as_str());
+    }
+    let session = web::parse_session(raw);
+    if session.cookies.is_empty() {
+        bail!("no cookies found — expected a cookie array or {{\"cookies\":[…]}}");
+    }
+    let n = session.cookies.len();
+    open_store(home, &cfg)
+        .await?
+        .save_session(
+            label,
+            acc.provider.as_str(),
+            &serde_json::to_string(&session)?,
+        )
+        .await?;
+    Ok(n)
+}
+
+/// `fetchira session <label> [--file PATH]` — attach a web session by hand (JSON on stdin if no
+/// `--file`). The escape hatch when no browser is available, e.g. a headless server.
+pub async fn session(home: &Path, mut args: impl Iterator<Item = String>) -> anyhow::Result<()> {
+    let label = args.next().context(
+        "usage: fetchira session <label> [--file PATH]   (reads JSON from stdin otherwise)",
+    )?;
+    let mut file = None;
+    while let Some(flag) = args.next() {
+        match flag.as_str() {
+            "--file" | "-f" => file = args.next(),
+            other => bail!("unknown flag '{other}'"),
+        }
+    }
+    let raw = match file {
+        Some(p) => std::fs::read_to_string(&p).with_context(|| format!("read {p}"))?,
+        None => {
+            std::io::read_to_string(std::io::stdin()).context("read session JSON from stdin")?
+        }
+    };
+    let n = set_session(home, &label, &raw).await?;
+    println!("session '{label}' set ({n} cookies)");
+    Ok(())
+}
+
 /// `fetchira login <provider|label>` — capture (or re-capture) a web session.
 pub async fn login(home: &Path, who: Option<String>) -> anyhow::Result<()> {
     let who = who.context("usage: fetchira login <provider|label>")?;
@@ -298,7 +357,7 @@ async fn do_login(
         "opening a browser to log into {} ({label}) — finish login in the window…",
         kind.as_str()
     );
-    let session = web::login(kind, label).await?;
+    let session = web::login(home, kind, label).await?;
     open_store(home, cfg)
         .await?
         .save_session(label, kind.as_str(), &serde_json::to_string(&session)?)
@@ -784,6 +843,7 @@ pub fn help() {
            fetchira add <provider>      add an account  [--label L] [--key K] [--proxy pool|URL]\n  \
            fetchira remove <label>      delete an account\n  \
            fetchira login <provider>    (re)capture a web-session login (gemini_web/perplexity_web/grok_web)\n  \
+           fetchira session <label>     attach a web session by hand (cookies JSON on stdin or --file) — for headless boxes\n  \
            fetchira update              download & install the latest release\n  \
            fetchira --version           print the installed version\n  \
            fetchira help                this message\n\n\

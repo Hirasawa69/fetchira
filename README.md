@@ -158,16 +158,17 @@ fetchira list                   # your accounts + remaining quota + login status
 fetchira add <provider>         # add an account (prompts for key, or logs in if web)
                                 #   flags: --label L  --key K  --proxy pool|URL
 fetchira remove <label>         # delete an account (and its session/usage)
-fetchira login <provider>       # (re)capture a web-session login
+fetchira login <provider>       # (re)capture a web-session login via a browser
+fetchira session <label>        # attach a web session by hand (cookies JSON on stdin or --file)
 fetchira install                # register fetchira with your coding tools
 fetchira update                 # download & install the latest release (or `brew upgrade`)
 fetchira --version              # print the installed version
 fetchira help
 ```
 
-`fetchira add tavily` asks for the key; `fetchira add gemini_web` opens a browser to log in.
-Multiple accounts per provider are fine (`--label tavily-2`); the router balances by remaining
-quota.
+`fetchira add tavily` asks for the key; `fetchira add gemini_web` opens a browser to log in (or,
+with no browser, falls back to `fetchira session` — see [Web sessions](#web-sessions)). Multiple
+accounts per provider are fine (`--label tavily-2`); the router balances by remaining quota.
 
 ## Register with your coding tools
 
@@ -206,9 +207,25 @@ fetchira login gemini_web
 fetchira login grok_web
 ```
 
-`fetchira login <provider>` launches Chrome against a dedicated profile, waits for you to finish
-logging in, captures the cookies (HttpOnly included) over the DevTools protocol and stores them
-in `usage.db`. These accounts get the same sticky-proxy support as API accounts.
+`fetchira login <provider>` launches a real browser against a dedicated profile, waits for you to
+finish logging in, captures the cookies (HttpOnly included) and stores them in `usage.db`. It uses
+**Chrome/Chromium/Edge/Brave** (over the DevTools protocol) if present, otherwise **Firefox**
+(read straight from its plaintext `cookies.sqlite`, since Firefox dropped CDP). Set
+`FETCHIRA_BROWSER=chrome|firefox` to force one. These accounts get the same sticky-proxy support
+as API accounts.
+
+**Headless / no browser?** On a server with no GUI, log in on any other machine (or any browser),
+export the cookies as JSON, and attach them by hand — no browser needed on the box that runs
+fetchira:
+
+```sh
+fetchira add gemini_web --label gemini_web-1      # saved even though the browser login is skipped
+fetchira session gemini_web-1 --file cookies.json # or: paste/pipe the JSON on stdin
+```
+
+The JSON is a cookie array (`[{"name":"sso","value":"…","domain":".grok.com"}]`) or
+`{"cookies":[…]}` — the shape a "Cookie Editor" browser extension exports. The dashboard has the
+same paste box (Add account → *or paste a session*, or the **Session** button on any web account).
 
 **Conversations, models, modes.** Web results end with a `⟦session: …⟧` token; pass it back as
 `session` to continue the same chat with full history. Optional `model` and `mode` select per
@@ -224,13 +241,15 @@ send `"start"` on the same session to run it (~1-3 min) and get the full report.
 
 Caveats, inherent to reverse-engineered web access:
 - **Sessions expire.** Cloudflare's `cf_clearance` lasts ~30 min to a few hours and cannot be
-  minted headless. Re-run `fetchira login <provider>` when a provider returns session/403 errors;
-  the router fails over to the API providers meanwhile.
+  minted headless. Re-run `fetchira login <provider>` (or re-attach with `fetchira session`) when a
+  provider returns session/403 errors; the router fails over to the API providers meanwhile.
 - **Grok is intermittent.** fetchira forges the anti-bot `x-statsig-id` per request, which gets
   past grok.com, but grok is aggressive on IP reputation and rate. Better odds: a fresh login, a
   residential `proxy`, and no bursting. The router fails over when grok blocks.
-- Requires Chrome/Chromium/Edge/Brave installed; the first build compiles BoringSSL (needs
-  `cmake` + Xcode CLT).
+- Browser login needs Chrome/Chromium/Edge/Brave or Firefox installed (Linux names like
+  `google-chrome`, `chromium`, `firefox` are resolved on `$PATH`). With none — or a headless box —
+  use `fetchira session` instead. The first build compiles BoringSSL (needs `cmake` + a C/C++
+  toolchain — Xcode CLT on macOS, `build-essential` on Linux).
 
 ## Tuning quota
 

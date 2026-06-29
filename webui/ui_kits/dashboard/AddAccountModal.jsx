@@ -42,6 +42,7 @@ function AddAccountModal({ onClose }) {
   const [label, setLabel] = React.useState('');
   const [apiKey, setApiKey] = React.useState('');
   const [proxy, setProxy] = React.useState('');
+  const [sessionJson, setSessionJson] = React.useState('');
   const [touched, setTouched] = React.useState(false);
   const [phase, setPhase] = React.useState('form'); // form | logging-in | success
   const [busy, setBusy] = React.useState(false);
@@ -74,6 +75,19 @@ function AddAccountModal({ onClose }) {
       setPhase('success');
       if (window.fxRefresh) window.fxRefresh();
     } catch (e) { setError(String(e.message || e)); setPhase('form'); }
+  };
+
+  // Paste a session captured elsewhere (any browser) — the only path on a headless box.
+  const submitSession = async () => {
+    if (busy || !sessionJson.trim()) return;
+    setError(null); setBusy(true);
+    try {
+      const res = await window.apiPost('/api/account/add', { provider: providerId, label: label.trim(), proxy: proxy.trim(), session: sessionJson });
+      setAddedLabel((res && res.label) || (label.trim() || provider.id));
+      setPhase('success');
+      if (window.fxRefresh) window.fxRefresh();
+    } catch (e) { setError(String(e.message || e)); }
+    setBusy(false);
   };
 
   // ---- Success ----
@@ -148,7 +162,17 @@ function AddAccountModal({ onClose }) {
             <Field label="Authentication">
               <Button variant="secondary" onClick={startLogin} style={{ width: '100%', justifyContent: 'center' }}
                 iconLeft={<span style={{ fontSize: 13 }}>◧</span>}>Log in with browser</Button>
-              <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-lo)' }}>Opens Chrome so you can sign in. The session is captured locally — no password is stored.</span>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-lo)' }}>Opens Chrome or Firefox so you can sign in. The session is captured locally — no password is stored.</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 2px' }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--border-hairline)' }} />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>or paste a session</span>
+                <div style={{ flex: 1, height: 1, background: 'var(--border-hairline)' }} />
+              </div>
+              <textarea value={sessionJson} onChange={(e) => setSessionJson(e.target.value)} spellCheck={false}
+                placeholder={'[{"name":"sso","value":"…","domain":".grok.com"}]'}
+                style={{ width: '100%', minHeight: 76, resize: 'vertical', boxSizing: 'border-box', padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-hi)', background: 'var(--surface-sunken, rgba(255,255,255,0.03))', border: '1px solid var(--border-hairline)', borderRadius: 'var(--r-sm)' }} />
+              <Button variant="ghost" onClick={submitSession} disabled={busy || !sessionJson.trim()} style={{ width: '100%', justifyContent: 'center' }}>{busy ? 'Saving…' : 'Use pasted session'}</Button>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-lo)' }}>Export cookies from any logged-in browser (e.g. a “Cookie Editor” extension → JSON). Works on headless servers.</span>
             </Field>
           )}
 

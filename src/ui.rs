@@ -72,6 +72,7 @@ pub async fn run(home: &Path) -> anyhow::Result<()> {
         .route("/api/account/add", post(api_add))
         .route("/api/account/remove", post(api_remove))
         .route("/api/account/login", post(api_login))
+        .route("/api/account/session", post(api_session))
         .route("/api/account/test", post(api_test))
         .fallback(static_handler)
         .with_state(state);
@@ -231,11 +232,19 @@ struct AddReq {
     label: Option<String>,
     key: Option<String>,
     proxy: Option<String>,
+    /// Web providers only: a session pasted by hand instead of the guided browser login.
+    session: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct LabelReq {
     label: String,
+}
+
+#[derive(Deserialize)]
+struct SessionReq {
+    label: String,
+    session: String,
 }
 
 async fn api_add(
@@ -254,15 +263,37 @@ async fn api_add(
         Ok(l) => l,
         Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     };
-    // Web providers also need a captured browser session; the account is written either way.
+    // Web providers also need a session; the account is written either way. A pasted session
+    // skips the browser entirely (the only path that works on a headless box).
     if kind.is_web() {
-        if let Err(e) = cli::capture_login(&st.home, &label).await {
+        let outcome = match req.session.filter(|s| !s.trim().is_empty()) {
+            Some(raw) => cli::set_session(&st.home, &label, &raw).await.map(|_| ()),
+            None => cli::capture_login(&st.home, &label).await,
+        };
+        if let Err(e) = outcome {
             rebuild(&st).await;
             return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
         }
     }
     rebuild(&st).await;
     Json(json!({ "ok": true, "label": label })).into_response()
+}
+
+async fn api_session(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<SessionReq>,
+) -> Response {
+    if let Some(r) = guard_mut(&st, &headers) {
+        return r;
+    }
+    match cli::set_session(&st.home, &req.label, &req.session).await {
+        Ok(n) => {
+            rebuild(&st).await;
+            Json(json!({ "ok": true, "cookies": n })).into_response()
+        }
+        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+    }
 }
 
 async fn api_remove(
