@@ -109,7 +109,16 @@ pub async fn call(
         429 => return Err(Error::RateLimit("grok_web: rate limited".into())),
         _ => {}
     }
-    parse(&text)
+    parse(&text).map_err(|e| match e {
+        // A non-auth status whose body isn't the expected stream: surface a snippet so the debug
+        // log shows what grok actually sent (anti-bot HTML, a changed shape, an empty body…).
+        Error::BadResponse(_) => Error::Provider {
+            provider: "grok_web",
+            status,
+            body: format!("unexpected response shape: {}", snippet(&text)),
+        },
+        e => e,
+    })
 }
 
 /// One POST attempt with a freshly minted `x-statsig-id` for the current build.
@@ -268,6 +277,19 @@ fn strip_render(s: &str) -> String {
     out
 }
 
+/// First chunk of a body, single-lined and capped — enough to tell an HTML/anti-bot page from a
+/// changed JSON shape when an unexpected response lands in the debug log.
+fn snippet(s: &str) -> String {
+    let t = s.trim();
+    if t.is_empty() {
+        return "<empty body>".to_string();
+    }
+    t.chars()
+        .take(200)
+        .collect::<String>()
+        .replace(['\n', '\r'], " ")
+}
+
 /// Recursively find the first string value under `key` anywhere in the JSON.
 fn find_str(v: &Value, key: &str) -> Option<String> {
     match v {
@@ -309,6 +331,13 @@ mod tests {
     fn strips_render_cards() {
         let s = "Rust 1.96<grok:render card_id=\"x\"><argument>0</argument></grok:render> is out.";
         assert_eq!(strip_render(s), "Rust 1.96 is out.");
+    }
+
+    #[test]
+    fn snippet_caps_and_flags_empty() {
+        assert_eq!(snippet("   \n  "), "<empty body>");
+        assert_eq!(snippet("line1\nline2"), "line1 line2");
+        assert_eq!(snippet(&"x".repeat(500)).len(), 200);
     }
 
     #[test]

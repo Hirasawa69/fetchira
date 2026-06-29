@@ -76,14 +76,21 @@ function App() {
   const [modal, setModal] = React.useState(false);
   const [seeded, setSeeded] = React.useState(true);
   const [online, setOnline] = React.useState(true);
+  const [, bump] = React.useState(0); // re-render with the freshly polled state
   const everOnline = React.useRef(false); // only nag once the server has actually been reached
 
   React.useEffect(() => {
     window.fxSetOffline = (v) => setOnline(!v);
+    // Poll keeps quota and the route-log snapshot live, so tabs re-seed from current data
+    // instead of the page-load snapshot (the Overview log seeds from FX.log on mount).
     const ping = async () => {
       try {
         const r = await fetch('/api/state', { headers: { 'x-fetchira-token': window.FX_TOKEN } });
-        if (r.ok) { everOnline.current = true; setOnline(true); } else setOnline(false);
+        if (!r.ok) { setOnline(false); return; }
+        everOnline.current = true;
+        setOnline(true);
+        window.FX = Object.assign({}, window.FX, await r.json());
+        bump((n) => n + 1);
       } catch (e) { setOnline(false); }
     };
     ping();
