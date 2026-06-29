@@ -1,13 +1,13 @@
 use base64::Engine;
 use serde_json::{json, Value};
 
-use super::{uuid4, with_sources, Capability, Input, LiveQuota, Outcome};
+use super::{grok_statsig, uuid4, with_sources, Capability, Input, LiveQuota, Outcome};
 use crate::error::{Error, Result};
 
-/// grok's anti-bot `x-statsig-id`. We send grok's own degraded-mode value: base64 of a thrown
-/// `TypeError`, which xAI accepts when a real client's Statsig SDK fails to init. A *static* value
-/// gets fingerprinted and 403'd, so randomize the error text each call. The real signed token (and
-/// why we don't compute it) is documented in `research/grok-statsig/`.
+/// grok's degraded-mode `x-statsig-id`: base64 of a thrown `TypeError`, which xAI accepts on the
+/// rate-limit poll when a real client's Statsig SDK fails to init. The chat-submit endpoint rejects
+/// it (it needs a real signed token — see `grok_statsig`), but `/rest/rate-limits` still takes it,
+/// so the quota poll skips the scrape. A *static* value gets fingerprinted, so randomize each call.
 fn statsig_id() -> String {
     let props = [
         "childNodes",
@@ -46,17 +46,17 @@ pub async fn call(
         return Err(Error::Unsupported("grok_web"));
     }
     let query = input.need_query()?;
-    let (model_name, preset, reasoning) = select(base, client, cap, input).await;
+    let mode = select(cap, input);
 
     // Resume an existing conversation, or start a new one.
     let url = match input.session.as_deref() {
         Some(conv) => format!("{base}/rest/app-chat/conversations/{conv}/responses"),
         None => format!("{base}/rest/app-chat/conversations/new"),
     };
+    let path = url.strip_prefix(base).unwrap_or(&url);
 
     let body = json!({
         "temporary": false,
-        "modelName": model_name,
         "message": query,
         "fileAttachments": [],
         "imageAttachments": [],
@@ -67,28 +67,26 @@ pub async fn call(
         "enableImageStreaming": false,
         "imageGenerationCount": 0,
         "forceConcise": false,
-        "toolOverrides": {},
         "enableSideBySide": true,
         "sendFinalMetadata": true,
-        "customInstructions": "",
-        "deepsearchPreset": preset,
-        "isReasoning": reasoning,
-        "disableTextFollowUps": true,
-    });
+        "disableTextFollowUps": false,
+        "responseMetadata": {},
+        "disableMemory": true,
+        "forceSideBySide": false,
+        "isAsyncChat": false,
+        "disableSelfHarmShortCircuit": false,
+        "collectionIds": [],
+        "disabledConnectorIds": [],
+        "modeId": mode,
+    })
+    .to_string();
 
-    let resp = client
-        .post(url)
-        // Body is JSON but grok.com sends it as text/plain — match the browser.
-        .header("content-type", "text/plain;charset=UTF-8")
-        .header(
-            "baggage",
-            "sentry-public_key=b311e0f2690c81f25e2c4cf6d4f7ce1c",
-        )
-        .header("x-statsig-id", statsig_id())
-        .header("x-xai-request-id", uuid4())
-        .body(body.to_string())
-        .send()
-        .await?;
+    let mut resp = send(base, client, &url, path, &body).await?;
+    // A 403 is grok's app anti-bot — usually a rotated build/seed. Drop the cached statsig and retry.
+    if resp.status().as_u16() == 403 {
+        grok_statsig::invalidate().await;
+        resp = send(base, client, &url, path, &body).await?;
+    }
     let status = resp.status().as_u16();
     let text = resp.text().await.unwrap_or_default();
     match status {
@@ -100,18 +98,42 @@ pub async fn call(
             })
         }
         403 => {
-            // Anti-bot rejection (usually IP reputation / rate, not the cookie session). Re-login
-            // won't help; the router fails over to other providers.
+            // Still rejected after a fresh statsig scrape — IP reputation/rate, or a build whose
+            // generator we couldn't follow. Re-login won't help; the router fails over.
             return Err(Error::Provider {
                 provider: "grok_web",
                 status,
-                body: "grok anti-bot rejected this request (IP/rate); failing over".into(),
+                body: "grok anti-bot rejected this request; failing over".into(),
             });
         }
         429 => return Err(Error::RateLimit("grok_web: rate limited".into())),
         _ => {}
     }
     parse(&text)
+}
+
+/// One POST attempt with a freshly minted `x-statsig-id` for the current build.
+async fn send(
+    base: &str,
+    client: &wreq::Client,
+    url: &str,
+    path: &str,
+    body: &str,
+) -> Result<wreq::Response> {
+    let statsig = grok_statsig::current(base, client).await?;
+    Ok(client
+        .post(url)
+        .header("content-type", "application/json")
+        .header(
+            "baggage",
+            "sentry-public_key=b311e0f2690c81f25e2c4cf6d4f7ce1c",
+        )
+        .header("origin", base)
+        .header("x-statsig-id", statsig.token("POST", path))
+        .header("x-xai-request-id", uuid4())
+        .body(body.to_string())
+        .send()
+        .await?)
 }
 
 /// Live remaining budget grok.com's own web UI polls, for a given model. grok keys the quota by
@@ -144,69 +166,26 @@ pub async fn rate_limit(base: &str, client: &wreq::Client, model: &str) -> Resul
     })
 }
 
-/// Pick (modelName, deepsearchPreset, isReasoning) for a grok call.
-///
-/// Default capability routing mirrors the web UI's reasoning modes:
-///   search        -> Fast  (grok-4, no reasoning) — quick, fewer sources.
-///   deep_research -> Heavy (grok-4-heavy) when the account has heavy budget, else Expert
-///                    (grok-4 + reasoning). Heavy access/exhaustion is read live from grok's
-///                    rate-limit endpoint, so an exhausted or unsubscribed Heavy degrades to Expert.
-/// An explicit `mode` (auto/fast/expert/heavy/deepsearch) or `model` overrides the default.
-async fn select(
-    base: &str,
-    client: &wreq::Client,
-    cap: Capability,
-    input: &Input,
-) -> (String, &'static str, bool) {
-    let (mut model, mut preset, mut reasoning): (String, &'static str, bool) = match cap {
-        Capability::DeepResearch => {
-            let heavy = rate_limit(base, client, "grok-4-heavy")
-                .await
-                .map(|lq| lq.remaining > 0)
-                .unwrap_or(false);
-            (
-                (if heavy { "grok-4-heavy" } else { "grok-4" }).to_string(),
-                "",
-                true,
-            )
-        }
-        _ => ("grok-4".to_string(), "", false),
+/// grok's web-UI `modeId` for a call: search -> Fast, deep_research -> Expert. Heavy isn't accepted
+/// for every account, so it's only sent when explicitly requested via `mode`. grok's anti-bot now
+/// rejects the old `modelName`/`deepsearchPreset`/`isReasoning` body fields, so one `modeId` carries
+/// the whole selection.
+fn select(cap: Capability, input: &Input) -> &'static str {
+    let mode = match cap {
+        Capability::DeepResearch => "expert",
+        _ => "fast",
     };
-    if let Some(m) = input.mode.as_deref() {
-        match m.to_ascii_lowercase().as_str() {
-            "auto" | "fast" => {
-                model = "grok-4".into();
-                reasoning = false;
-            }
-            "expert" => {
-                model = "grok-4".into();
-                reasoning = true;
-            }
-            "heavy" => {
-                model = "grok-4-heavy".into();
-                reasoning = true;
-            }
-            "deepsearch" | "deep search" | "deep research" | "deep_research" | "research" => {
-                preset = "default"
-            }
-            "deepersearch" | "deeper" => preset = "deeper",
-            _ => {}
-        }
+    match input.mode.as_deref() {
+        Some(m) => match m.to_ascii_lowercase().as_str() {
+            "auto" => "auto",
+            "fast" => "fast",
+            "expert" | "deepsearch" | "deep search" | "deep research" | "deep_research"
+            | "research" => "expert",
+            "heavy" => "heavy",
+            _ => mode,
+        },
+        None => mode,
     }
-    if let Some(m) = input.model.as_deref() {
-        let k: String = m
-            .to_ascii_lowercase()
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .collect();
-        model = match k.as_str() {
-            "grok3" => "grok-3".into(),
-            "grok4" => "grok-4".into(),
-            "grok4heavy" => "grok-4-heavy".into(),
-            _ => model,
-        };
-    }
-    (model, preset, reasoning)
 }
 
 /// Parse newline-delimited JSON. Prefer the terminal `modelResponse.message`; otherwise

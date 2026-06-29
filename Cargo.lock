@@ -805,6 +805,7 @@ dependencies = [
  "futures-util",
  "inquire",
  "open",
+ "regex",
  "reqwest",
  "rmcp",
  "rust-embed",

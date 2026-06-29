@@ -6,6 +6,7 @@ use crate::error::{Error, Result};
 mod exa;
 mod firecrawl;
 mod gemini_web;
+mod grok_statsig;
 mod grok_web;
 mod jina;
 mod parallel;
