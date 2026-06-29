@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/ImmuneFOMO/fetchira/compare/v0.1.1...v0.1.2) - 2026-06-29
+
+### Added
+
+- *(ui)* persistent request/response debug log
+
+### Fixed
+
+- *(grok)* mint real x-statsig-id so research stops 403ing
+
 ## [0.1.1](https://github.com/ImmuneFOMO/fetchira/compare/v0.1.0...v0.1.1) - 2026-06-29
 
 ### Added
