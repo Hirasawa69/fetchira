@@ -117,10 +117,31 @@ over piped stdio it serves MCP exactly as before. Force either with `fetchira se
 
 ## Install and set up
 
+**Homebrew** (macOS + Linux):
+
 ```sh
-./install.sh          # builds, installs the binary to ~/.local/bin, creates ~/.config/fetchira
+brew install ImmuneFOMO/tap/fetchira
+```
+
+**Or `curl | sh`** — downloads the prebuilt binary for your platform into `~/.local/bin`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ImmuneFOMO/fetchira/main/install.sh | sh
+```
+
+**From source** (in a checkout — builds with cargo):
+
+```sh
+./install.sh          # builds, installs the binary to ~/.local/bin
+```
+
+Then configure providers:
+
+```sh
 fetchira setup        # guided: pick providers, paste API keys, log into the web ones
 ```
+
+Update later with `brew upgrade fetchira` (Homebrew) or `fetchira update` (curl|sh / manual install).
 
 `setup` walks every provider, asks which you want, prompts for the API key (key-based) or opens
 a browser to log in (web-session), and writes everything to **global config** in
@@ -139,6 +160,8 @@ fetchira add <provider>         # add an account (prompts for key, or logs in if
 fetchira remove <label>         # delete an account (and its session/usage)
 fetchira login <provider>       # (re)capture a web-session login
 fetchira install                # register fetchira with your coding tools
+fetchira update                 # download & install the latest release (or `brew upgrade`)
+fetchira --version              # print the installed version
 fetchira help
 ```
 
